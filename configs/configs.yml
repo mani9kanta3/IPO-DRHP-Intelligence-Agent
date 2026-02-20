@@ -1,0 +1,43 @@
+project:
+  name: "IPO-DRHP-Intelligence-Agent"
+  version: "1.0.0"
+
+llm:
+  provider: "gemini"  # gemini / openai / claude
+  gemini_model: "gemini-1.5-flash"  # free tier
+  openai_model: "gpt-4o"
+  claude_model: "claude-3-5-sonnet-20241022"
+  cheap_model: "gemini-1.5-flash"  # for simple tasks
+
+ingestion:
+  chunk_size: 2000
+  chunk_overlap: 200
+  collection_name: "drhp_chunks"
+
+agents:
+  red_flag:
+    top_k_chunks: 20
+    max_tokens: 2000
+  financial:
+    top_k_chunks: 15
+    max_tokens: 2000
+  promoter:
+    searches_per_promoter: 5
+    max_tokens: 1500
+  valuation:
+    top_k_chunks: 10
+    max_tokens: 1000
+  reporter:
+    max_tokens: 3000
+    max_revisions: 2
+
+search:
+  tavily_max_results: 5
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  max_file_size_mb: 50
+
+dashboard:
+  port: 8501
