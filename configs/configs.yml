@@ -3,11 +3,11 @@ project:
   version: "1.0.0"
 
 llm:
-  provider: "gemini"  # gemini / openai / claude
-  gemini_model: "gemini-1.5-flash"  # free tier
+  provider: "gemini"
+  gemini_model: "gemini-2.5-flash"
+  gemini_cheap_model: "gemini-2.0-flash-lite"
   openai_model: "gpt-4o"
   claude_model: "claude-3-5-sonnet-20241022"
-  cheap_model: "gemini-1.5-flash"  # for simple tasks
 
 ingestion:
   chunk_size: 2000
