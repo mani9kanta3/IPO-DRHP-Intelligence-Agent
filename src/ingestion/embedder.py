@@ -1,18 +1,27 @@
 import chromadb
-from chromadb.utils import embedding_functions
 import hashlib
 from typing import List
 from langchain_core.documents import Document
 import os
 from dotenv import load_dotenv
+from google import genai
 
 load_dotenv()
 
+client_genai = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+
 
 def get_pdf_hash(pdf_path: str) -> str:
-    """Generate MD5 hash of PDF file for caching."""
     with open(pdf_path, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
+
+
+def get_embeddings(texts: List[str]) -> List[List[float]]:
+    result = client_genai.models.embed_content(
+        model="models/gemini-embedding-001",
+        contents=texts
+    )
+    return [e.values for e in result.embeddings]
 
 
 def get_chroma_client():
@@ -21,37 +30,31 @@ def get_chroma_client():
 
 def get_collection(collection_name: str = "drhp_chunks"):
     client = get_chroma_client()
-    embedding_fn = embedding_functions.GoogleGenerativeAiEmbeddingFunction(
-        api_key=os.getenv("GOOGLE_API_KEY"),
-        model_name="models/embedding-001"
-    )
-    collection = client.get_or_create_collection(
-        name=collection_name,
-        embedding_function=embedding_fn
-    )
+    collection = client.get_or_create_collection(name=collection_name)
     return collection
 
 
 def embed_chunks(chunks: List[Document], pdf_path: str, collection_name: str = "drhp_chunks") -> bool:
-    """Embed chunks into ChromaDB. Returns True if embedded, False if cache hit."""
     pdf_hash = get_pdf_hash(pdf_path)
-
     collection = get_collection(collection_name)
 
-    # Check cache — if this PDF was already embedded, skip
+    # Check cache
     existing = collection.get(where={"pdf_hash": pdf_hash}, limit=1)
     if existing and existing["ids"]:
-        print(f"Cache hit! PDF already embedded. Skipping.")
+        print("Cache hit! PDF already embedded. Skipping.")
         return False
 
     print(f"Embedding {len(chunks)} chunks into ChromaDB...")
 
-    # Embed in batches of 100
-    batch_size = 100
+    batch_size = 50
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i:i + batch_size]
+        texts = [c.page_content for c in batch]
+        embeddings = get_embeddings(texts)
+
         collection.add(
-            documents=[c.page_content for c in batch],
+            documents=texts,
+            embeddings=embeddings,
             metadatas=[{"chunk_id": c.metadata["chunk_id"], "pdf_hash": pdf_hash} for c in batch],
             ids=[f"{pdf_hash}_{c.metadata['chunk_id']}" for c in batch]
         )
@@ -62,10 +65,10 @@ def embed_chunks(chunks: List[Document], pdf_path: str, collection_name: str = "
 
 
 def search(query: str, top_k: int = 10, collection_name: str = "drhp_chunks") -> List[dict]:
-    """Search ChromaDB for most relevant chunks."""
     collection = get_collection(collection_name)
+    query_embedding = get_embeddings([query])[0]
     results = collection.query(
-        query_texts=[query],
+        query_embeddings=[query_embedding],
         n_results=top_k
     )
     chunks = []
