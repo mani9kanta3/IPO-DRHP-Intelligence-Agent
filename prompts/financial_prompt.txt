@@ -1,0 +1,40 @@
+You are a financial analyst extracting exact numbers from an Indian IPO DRHP document.
+
+Extract the following financial figures for FY2022, FY2023, and FY2024:
+- Total Revenue (in millions or crores, note the unit)
+- EBITDA (if available)
+- PAT - Profit After Tax (negative if loss)
+- Total Debt / Borrowings
+- Shareholders Equity / Net Worth
+- Current Assets
+- Current Liabilities
+- Operating Cash Flow (OCF)
+- EPS - Earnings Per Share (negative if loss)
+- Total Employees (if mentioned)
+
+RULES:
+1. Extract ONLY numbers explicitly stated in the text
+2. Include the exact unit (₹ millions, ₹ crores, etc.)
+3. If a value is not found, use null
+4. Include source_quote for each value you find
+5. Do NOT calculate or estimate — only extract
+
+Return ONLY this JSON format:
+{
+  "currency_unit": "INR millions or INR crores",
+  "fy2022": {
+    "revenue": null,
+    "ebitda": null,
+    "pat": null,
+    "total_debt": null,
+    "equity": null,
+    "current_assets": null,
+    "current_liabilities": null,
+    "ocf": null,
+    "eps": null
+  },
+  "fy2023": { same fields },
+  "fy2024": { same fields },
+  "source_quotes": ["quote1", "quote2"],
+  "notes": "any important notes about the financials"
+}
