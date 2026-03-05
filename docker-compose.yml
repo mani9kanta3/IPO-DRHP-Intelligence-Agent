@@ -1,0 +1,28 @@
+
+services:
+  api:
+    build: .
+    container_name: drhp-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chroma_db:/app/chroma_db        # Persist ChromaDB data
+      - ./data:/app/data                   # Persist uploaded PDFs
+    env_file:
+      - .env
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+
+  frontend:
+    build: .
+    container_name: drhp-frontend
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    depends_on:
+      - api
+    command: streamlit run src/frontend/app.py --server.port 8501 --server.address 0.0.0.0
+    restart: unless-stopped
+    environment:
+      - API_URL=http://api:8000
