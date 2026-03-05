@@ -100,7 +100,21 @@ Verdict: [BUY/AVOID/WATCH]
 [reasoning]
 
 ✅ RECOMMENDATION:
-[2-3 sentences]"""
+[2-3 sentences]
+
+💡 INVESTOR ACTION GUIDE (For First-Time IPO Investors):
+
+Should I apply at IPO price? [Yes/No — 1 sentence]
+
+Short-term strategy (listing day): [1-2 sentences]
+
+Long-term strategy (1-3 years): [1-2 sentences]  
+
+Better alternatives right now: [1-2 sentences]
+
+When would this become a BUY? [specific conditions]
+
+Risk vs Fixed Deposit: [Very High / High / Moderate — explain in 1 sentence]"""
 
     try:
         response = llm.invoke(prompt)
