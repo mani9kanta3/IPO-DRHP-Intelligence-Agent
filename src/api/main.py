@@ -6,8 +6,20 @@ import shutil
 import os
 from pathlib import Path
 from src.api.schemas import AnalysisStatus, AnalysisReport
+from fastapi.security import APIKeyHeader
+from fastapi import Security
+import secrets
 
 app = FastAPI(title="IPO DRHP Intelligence Agent", version="1.0.0")
+
+# Simple API key security
+API_KEY = os.getenv("API_KEY", "drhp-demo-key-2024")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+async def verify_api_key(api_key: str = Security(api_key_header)):
+    if api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid or missing API key")
+    return api_key
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,8 +54,14 @@ def health():
     return {"status": "ok", "message": "DRHP Agent API is running"}
 
 
+from fastapi import Depends
+
+def validate_pdf(contents: bytes) -> bool:
+    """Check file is actually a PDF by checking magic bytes."""
+    return contents[:4] == b'%PDF'
+
 @app.post("/analyze", response_model=AnalysisStatus)
-async def analyze(file: UploadFile = File(...)):
+async def analyze(file: UploadFile = File(...), api_key: str = Depends(verify_api_key)):
     # Validate file
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files accepted")
@@ -54,6 +72,9 @@ async def analyze(file: UploadFile = File(...)):
 
     if file_size > 50:
         raise HTTPException(status_code=400, detail="File too large. Max 50MB.")
+    
+    if not validate_pdf(contents):
+        raise HTTPException(status_code=400, detail="File is not a valid PDF")
 
     # Save uploaded file
     job_id = str(uuid.uuid4())[:8]
@@ -100,7 +121,7 @@ def get_status(job_id: str):
 
 
 @app.get("/report/{job_id}", response_model=AnalysisReport)
-def get_report(job_id: str):
+def get_report(job_id: str, api_key: str = Depends(verify_api_key)):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
 

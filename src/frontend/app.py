@@ -1,9 +1,10 @@
 import streamlit as st
 import requests
 import time
-import json
 
 API_URL = "http://127.0.0.1:8000"
+API_KEY = "drhp-secret-key-2024"
+HEADERS = {"X-API-Key": API_KEY}
 
 st.set_page_config(
     page_title="IPO DRHP Intelligence Agent",
@@ -40,18 +41,20 @@ if uploaded_file:
     st.success(f"✅ File uploaded: {uploaded_file.name} ({round(uploaded_file.size/1024/1024, 1)} MB)")
 
     if st.button("🚀 Start Analysis", type="primary"):
-        # Submit to API
         with st.spinner("Submitting to API..."):
             try:
                 response = requests.post(
                     f"{API_URL}/analyze",
-                    files={"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
+                    files={"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")},
+                    headers=HEADERS  # API key sent here
                 )
                 if response.status_code == 200:
                     job_data = response.json()
                     job_id = job_data["job_id"]
                     st.session_state["job_id"] = job_id
                     st.success(f"Analysis started! Job ID: {job_id}")
+                elif response.status_code == 403:
+                    st.error("API key invalid. Check your configuration.")
                 else:
                     st.error(f"API error: {response.text}")
             except Exception as e:
@@ -85,6 +88,7 @@ if "job_id" in st.session_state:
 
         while True:
             try:
+                # Status endpoint — no auth needed
                 status_resp = requests.get(f"{API_URL}/status/{job_id}")
                 status_data = status_resp.json()
                 current_status = status_data["status"]
@@ -93,7 +97,11 @@ if "job_id" in st.session_state:
                 status_text.info(status_messages.get(current_status, current_status))
 
                 if current_status == "complete":
-                    report_resp = requests.get(f"{API_URL}/report/{job_id}")
+                    # Report endpoint — needs auth
+                    report_resp = requests.get(
+                        f"{API_URL}/report/{job_id}",
+                        headers=HEADERS  # API key sent here
+                    )
                     st.session_state["report_data"] = report_resp.json()
                     st.rerun()
                     break
@@ -195,9 +203,13 @@ if "report_data" in st.session_state:
                         marker_color=["#636EFA", "#636EFA", "#00CC96"]
                     )
                 ])
-                fig.update_layout(title="Revenue Trend (₹ Million)", xaxis_title="Year", yaxis_title="Revenue")
+                fig.update_layout(
+                    title="Revenue Trend (₹ Million)",
+                    xaxis_title="Year",
+                    yaxis_title="Revenue"
+                )
                 st.plotly_chart(fig, use_container_width=True)
-        except:
+        except Exception:
             pass
 
     with tab4:
