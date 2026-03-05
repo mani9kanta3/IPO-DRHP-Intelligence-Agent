@@ -10,17 +10,32 @@ load_dotenv()
 
 
 def extract_ipo_details(state: ResearchState, llm) -> dict:
-    """Extract IPO price band, EPS, sector from DRHP."""
-    queries = [
-        "price band offer price per share",
-        "earnings per share EPS face value",
-        "industry sector business description"
+    pdf_hash = state.get("pdf_hash")
+
+    # Step 1: Fetch cover page directly by chunk ID
+    cover_text = ""
+    try:
+        from src.ingestion.embedder import get_chroma_client
+        client = get_chroma_client()
+        col = client.get_collection('drhp_chunks')
+        cover_ids = [f"{pdf_hash}_0", f"{pdf_hash}_1"]
+        results = col.get(ids=cover_ids)
+        if results['documents']:
+            cover_text = "\n".join(results['documents'])
+    except Exception as e:
+        print(f"  Warning: cover page fetch failed: {e}")
+
+    # Step 2: Semantic search for price, EPS, sector
+    cover_queries = [
+        "price band offer price per share face value rupees",
+        "earnings per share EPS diluted basic",
+        "food delivery quick commerce electric vehicle fintech sector industry"
     ]
 
-    chunks = []
-    seen = set()
-    for q in queries:
-        results = search(q, top_k=5)
+    chunks = [cover_text] if cover_text else []
+    seen = {cover_text}
+    for q in cover_queries:
+        results = search(q, top_k=4, pdf_hash=pdf_hash)
         for r in results:
             if r["content"] not in seen:
                 seen.add(r["content"])
@@ -28,18 +43,24 @@ def extract_ipo_details(state: ResearchState, llm) -> dict:
 
     context = "\n\n---\n\n".join(chunks[:15])
 
-    prompt = f"""Extract IPO details from this DRHP text:
+    prompt = f"""Extract IPO details from this DRHP document.
 
 {context}
 
+RULES:
+- company_name: Main company filing IPO, ends with "Limited". NOT a subsidiary.
+- price_band: If you see "[●]" return null — price not yet decided
+- eps_fy24: Look for "earnings per share" — return null if loss-making or not found
+- sector: What does this company do? Be specific: "food delivery and quick commerce" / "electric vehicles" / "fintech BNPL"
+
 Return ONLY this JSON:
 {{
-  "company_name": "company name",
+  "company_name": "exact company name",
   "price_band_low": null,
   "price_band_high": null,
   "face_value": null,
   "eps_fy24": null,
-  "sector": "food delivery / EV / fintech etc",
+  "sector": "specific sector description",
   "currency": "INR"
 }}"""
 
@@ -48,7 +69,7 @@ Return ONLY this JSON:
         content = response.content.strip().replace("```json", "").replace("```", "").strip()
         return json.loads(content)
     except:
-        return {}
+        return {"company_name": "Unknown Company", "sector": "technology"}
 
 
 def get_peer_valuations(sector: str, tavily: TavilyClient) -> list:
@@ -99,14 +120,8 @@ def valuation_agent(state: ResearchState) -> ResearchState:
 
     # Calculate P/E if profitable
     issue_pe = None
-    issue_ps = None
-
     if eps and eps > 0 and price_high:
         issue_pe = round(price_high / eps, 2)
-    
-    # Calculate P/S ratio (useful for loss-making companies)
-    # Using market cap estimate (price * shares) / revenue is complex
-    # Instead ask LLM to interpret from peer context
 
     prompt = f"""You are a valuation analyst for Indian IPOs.
 
@@ -127,7 +142,7 @@ Return ONLY this JSON:
 {{
   "issue_pe": {issue_pe},
   "sector_avg_pe": null,
-  "is_loss_making": true/false,
+  "is_loss_making": true,
   "valuation_call": "EXPENSIVE/FAIR/CHEAP",
   "premium_discount_pct": null,
   "reasoning": "2-3 sentence explanation",
@@ -139,6 +154,9 @@ Return ONLY this JSON:
         content = response.content.strip().replace("```json", "").replace("```", "").strip()
         valuation = json.loads(content)
 
+        # Store company name in valuation for other agents to use
+        valuation["company_name"] = ipo_details.get("company_name", "Unknown")
+
         print(f"  Valuation Call: {valuation.get('valuation_call')}")
         print(f"  Issue P/E: {valuation.get('issue_pe')}")
         print(f"  Reasoning: {valuation.get('reasoning', '')[:100]}...")
@@ -149,7 +167,11 @@ Return ONLY this JSON:
     except Exception as e:
         print(f"  Error in valuation: {e}")
         state["errors"].append(f"Valuation agent error: {str(e)}")
-        state["valuation"] = {"valuation_call": "FAIR", "reasoning": "Could not determine valuation."}
+        state["valuation"] = {
+            "valuation_call": "FAIR",
+            "reasoning": "Could not determine valuation.",
+            "company_name": ipo_details.get("company_name", "Unknown")
+        }
 
     return state
 
@@ -158,14 +180,17 @@ if __name__ == "__main__":
     from src.ingestion.pdf_loader import load_pdf
     from src.agents.supervisor import section_identifier_agent
     from src.agents.financial import financial_agent
+    from src.ingestion.embedder import get_pdf_hash
 
     result = load_pdf("data/sample_drhps/swiggy_drhp.pdf")
+    pdf_hash = get_pdf_hash("data/sample_drhps/swiggy_drhp.pdf")
 
     state = ResearchState(
         drhp_text=result["text"],
         pdf_path="data/sample_drhps/swiggy_drhp.pdf",
         file_name=result["file_name"],
         total_pages=result["total_pages"],
+        pdf_hash=pdf_hash,
         sections={},
         red_flags=[],
         risk_score=0,

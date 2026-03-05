@@ -26,18 +26,66 @@ No explanation, just the JSON array."""
         content = response.content.strip()
         content = content.replace("```json", "").replace("```", "").strip()
         names = json.loads(content)
-        return names[:5]  # Max 5 people to control Tavily usage
+        return names[:5]
     except:
         return []
 
 
-def search_person_background(name: str, tavily: TavilyClient) -> list:
-    """Run 4 targeted searches for a person."""
+def extract_company_name(state: ResearchState, llm) -> str:
+    """Extract company name by fetching cover page chunk directly."""
+    pdf_hash = state.get("pdf_hash")
+    
+    if not pdf_hash:
+        print("  Warning: no pdf_hash in state")
+        return "the company"
+
+    try:
+        from src.ingestion.embedder import get_chroma_client
+        client = get_chroma_client()
+        col = client.get_collection('drhp_chunks')
+
+        cover_ids = [f"{pdf_hash}_0", f"{pdf_hash}_1"]
+        results = col.get(ids=cover_ids)
+
+        if not results['documents']:
+            print("  Warning: no cover page chunks found")
+            return "the company"
+
+        cover_text = "\n".join(results['documents'])
+
+        prompt = f"""Extract only the main company name ending with 'Limited' from this DRHP cover page.
+Examples: 'Swiggy Limited', 'Ola Electric Mobility Limited'
+
+Text: {cover_text[:600]}
+
+Return ONLY the company name. Nothing else."""
+
+        resp = llm.invoke(prompt)
+        candidate = resp.content.strip().split("\n")[0].strip()
+        candidate = candidate.replace('"', '').replace("'", '').strip()
+
+        if (
+            "limited" in candidate.lower()
+            and len(candidate) < 80
+            and "not" not in candidate.lower()
+            and "unknown" not in candidate.lower()
+        ):
+            print(f"  Company identified: {candidate}")
+            return candidate
+        else:
+            print(f"  Warning: rejected candidate '{candidate}'")
+
+    except Exception as e:
+        print(f"  Company name extraction error: {e}")
+
+    return "the company"
+
+def search_person_background(name: str, company: str, tavily: TavilyClient) -> list:
+    """Run targeted searches for a person with company context."""
     queries = [
-        f"{name} fraud controversy allegations",
-        f"{name} SEBI action regulatory penalty India",
-        f"{name} court case legal proceedings",
-        f"{name} previous companies startup track record"
+        f"{name} {company} SEBI fraud controversy India",
+        f"{name} {company} court case legal proceedings",
+        f"{name} founder CEO background track record India"
     ]
 
     results = []
@@ -51,33 +99,40 @@ def search_person_background(name: str, tavily: TavilyClient) -> list:
                     "content": r.get("content", "")[:500]
                 })
         except Exception as e:
-            print(f"    Search failed for '{query}': {e}")
+            print(f"    Search failed: {e}")
 
     return results
 
 
-def rate_promoter(name: str, search_results: list, llm) -> dict:
-    """Use LLM to rate a promoter based on search results."""
+def rate_promoter(name: str, company: str, search_results: list, llm) -> dict:
+    """Rate a promoter based on search results."""
     results_text = ""
     for r in search_results:
         results_text += f"\nTitle: {r['title']}\nContent: {r['content']}\n---"
 
-    prompt = f"""You are doing background check on {name}, a promoter/founder of an Indian company filing for IPO.
+    prompt = f"""You are doing a background check on {name}, associated with {company} which is filing for an IPO in India.
 
 Based on these web search results:
 {results_text}
 
-Rate this person as:
+IMPORTANT RULES:
+1. Only rate RED if there is CLEAR evidence of serious issues directly related to THIS person
+2. Do not confuse this person with someone else with a similar name
+3. Family members (wife, parents) should only be rated based on their OWN actions
+4. YELLOW = minor concerns or unverified allegations
+5. GREEN = clean or no significant issues found
+
+Rate this person:
 - GREEN: Clean background, no serious concerns
-- YELLOW: Some concerns worth monitoring (aggressive style, minor disputes)
-- RED: Serious issues (SEBI actions, fraud allegations, major litigation)
+- YELLOW: Some concerns worth monitoring
+- RED: Serious verified issues (SEBI actions, fraud conviction, major litigation)
 
 Return ONLY this JSON:
 {{
   "name": "{name}",
   "rating": "GREEN/YELLOW/RED",
-  "key_findings": "2-3 sentence summary of what was found",
-  "concerns": ["list of specific concerns if any"]
+  "key_findings": "2-3 sentence summary",
+  "concerns": ["specific concern 1", "specific concern 2"]
 }}"""
 
     try:
@@ -89,7 +144,7 @@ Return ONLY this JSON:
         return {
             "name": name,
             "rating": "YELLOW",
-            "key_findings": "Could not retrieve background information.",
+            "key_findings": "Could not retrieve sufficient background information.",
             "concerns": []
         }
 
@@ -100,27 +155,56 @@ def promoter_agent(state: ResearchState) -> ResearchState:
     llm = get_llm(complex_task=True)
     tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
-    # Extract promoter names from DRHP
+    # Extract company name from document
+    company_name = extract_company_name(state, llm)
+    print(f"  Company identified: {company_name}")
+
+    # Extract promoter names
     names = extract_promoter_names(state, llm)
     print(f"  Found promoters/key people: {names}")
 
     if not names:
-        print("  No promoter names found — marking as unknown")
-        state["promoter_report"] = [{"name": "Unknown", "rating": "YELLOW", "key_findings": "No identifiable promoter found in DRHP.", "concerns": []}]
+        print("  No promoter names found")
+        state["promoter_report"] = [{
+            "name": "Unknown",
+            "rating": "YELLOW",
+            "key_findings": "No identifiable promoter found in DRHP.",
+            "concerns": []
+        }]
         state["status"] = "promoters_checked"
         return state
 
+    import concurrent.futures
+
+    def check_promoter(name):
+        search_results = search_person_background(name, company_name, tavily)
+        return rate_promoter(name, company_name, search_results, llm)
+
     promoter_reports = []
-    for name in names:
-        print(f"  Searching background for: {name}")
-        search_results = search_person_background(name, tavily)
-        report = rate_promoter(name, search_results, llm)
-        promoter_reports.append(report)
-        print(f"    Rating: {report['rating']} — {report['key_findings'][:80]}...")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(check_promoter, name): name for name in names}
+        for future in concurrent.futures.as_completed(futures):
+            name = futures[future]
+            try:
+                report = future.result()
+                promoter_reports.append(report)
+                print(f"    {report['rating']} — {name}: {report['key_findings'][:80]}...")
+            except Exception as e:
+                print(f"    Failed for {name}: {e}")
+                promoter_reports.append({
+                    "name": name,
+                    "rating": "YELLOW",
+                    "key_findings": "Could not retrieve background.",
+                    "concerns": []
+                })
 
     state["promoter_report"] = promoter_reports
     state["status"] = "promoters_checked"
     return state
+
+    pdf_hash = state.get("pdf_hash")
+    # update company name search
+    results = search("draft red herring prospectus limited IPO offer", top_k=3, pdf_hash=pdf_hash)
 
 
 if __name__ == "__main__":

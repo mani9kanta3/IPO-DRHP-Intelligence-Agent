@@ -18,54 +18,17 @@ app.add_middleware(
 
 # In-memory job store
 jobs = {}
-
-
+        
 def run_pipeline(job_id: str, pdf_path: str, file_name: str):
-    """Run the full pipeline synchronously in background thread."""
     try:
-        jobs[job_id]["status"] = "loading_pdf"
-        jobs[job_id]["message"] = "Loading and extracting PDF..."
-
-        from src.ingestion.pdf_loader import load_pdf
-        from src.ingestion.chunker import chunk_text
-        from src.ingestion.embedder import embed_chunks
-        from src.graph.workflow import build_workflow
-        from src.agents.state import ResearchState
-
-        result = load_pdf(pdf_path)
-
-        jobs[job_id]["status"] = "embedding"
-        jobs[job_id]["message"] = "Embedding chunks into ChromaDB..."
-
-        chunks = chunk_text(result["text"])
-        embed_chunks(chunks, pdf_path)
-
         jobs[job_id]["status"] = "analyzing"
-        jobs[job_id]["message"] = "Running 6 AI agents..."
+        jobs[job_id]["message"] = "Running AI agents..."
 
-        initial_state = ResearchState(
-            drhp_text=result["text"],
-            pdf_path=pdf_path,
-            file_name=file_name,
-            total_pages=result["total_pages"],
-            sections={},
-            red_flags=[],
-            risk_score=0,
-            financials={},
-            promoter_report=[],
-            valuation={},
-            final_report="",
-            verdict="",
-            revision_count=0,
-            status="started",
-            errors=[]
-        )
-
-        app_workflow = build_workflow()
-        final_state = app_workflow.invoke(initial_state)
+        from src.graph.workflow import run_analysis
+        final_state, elapsed = run_analysis(pdf_path)
 
         jobs[job_id]["status"] = "complete"
-        jobs[job_id]["message"] = "Analysis complete!"
+        jobs[job_id]["message"] = f"Analysis complete in {elapsed} seconds!"
         jobs[job_id]["result"] = final_state
 
     except Exception as e:

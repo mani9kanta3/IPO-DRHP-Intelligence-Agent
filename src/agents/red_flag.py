@@ -13,11 +13,12 @@ def red_flag_agent(state: ResearchState) -> ResearchState:
     print("\n[Agent 2] Red Flag Detector running...")
 
     llm = get_llm(complex_task=True)
+    pdf_hash = state.get("pdf_hash")
 
     # Get risk factor chunks from sections
     risk_chunks = state["sections"].get("risk_factors", [])
 
-    # Also do targeted semantic searches for specific red flags
+    # Targeted semantic searches for specific red flags
     targeted_queries = [
         "promoter shares pledged encumbered",
         "related party transactions",
@@ -32,7 +33,7 @@ def red_flag_agent(state: ResearchState) -> ResearchState:
     extra_chunks = []
     seen = set(risk_chunks)
     for query in targeted_queries:
-        results = search(query, top_k=5)
+        results = search(query, top_k=5, pdf_hash=pdf_hash)
         for r in results:
             if r["content"] not in seen:
                 seen.add(r["content"])
@@ -41,8 +42,8 @@ def red_flag_agent(state: ResearchState) -> ResearchState:
     all_chunks = risk_chunks + extra_chunks
     print(f"  Analyzing {len(all_chunks)} chunks for red flags...")
 
-    # Combine chunks into context (limit to avoid token overflow)
-    context = "\n\n---\n\n".join(all_chunks[:40])
+    # Limit chunks to control token usage and speed
+    context = "\n\n---\n\n".join(all_chunks[:25])
 
     prompt_template = load_prompt()
 
@@ -62,7 +63,6 @@ Remember: Return ONLY valid JSON, no markdown, no explanation."""
 
         red_flags = result.get("red_flags", [])
         risk_score = result.get("overall_risk_score", 5)
-        risk_summary = result.get("risk_summary", "")
 
         print(f"  Red flags found: {len(red_flags)}")
         for flag in red_flags:
@@ -84,14 +84,17 @@ Remember: Return ONLY valid JSON, no markdown, no explanation."""
 if __name__ == "__main__":
     from src.ingestion.pdf_loader import load_pdf
     from src.agents.supervisor import section_identifier_agent
+    from src.ingestion.embedder import get_pdf_hash
 
     result = load_pdf("data/sample_drhps/swiggy_drhp.pdf")
+    pdf_hash = get_pdf_hash("data/sample_drhps/swiggy_drhp.pdf")
 
     state = ResearchState(
         drhp_text=result["text"],
         pdf_path="data/sample_drhps/swiggy_drhp.pdf",
         file_name=result["file_name"],
         total_pages=result["total_pages"],
+        pdf_hash=pdf_hash,
         sections={},
         red_flags=[],
         risk_score=0,

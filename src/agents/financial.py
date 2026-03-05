@@ -102,8 +102,9 @@ def financial_agent(state: ResearchState) -> ResearchState:
     print("\n[Agent 3] Financial Health Agent running...")
 
     llm = get_llm(complex_task=True)
+    pdf_hash = state.get("pdf_hash")
 
-    # Get financial chunks
+    # Get financial chunks from sections
     fin_chunks = state["sections"].get("financials", [])
 
     # Targeted searches for financial data
@@ -120,7 +121,7 @@ def financial_agent(state: ResearchState) -> ResearchState:
     extra = []
     seen = set(fin_chunks)
     for q in queries:
-        results = search(q, top_k=5)
+        results = search(q, top_k=5, pdf_hash=pdf_hash)
         for r in results:
             if r["content"] not in seen:
                 seen.add(r["content"])
@@ -129,7 +130,8 @@ def financial_agent(state: ResearchState) -> ResearchState:
     all_chunks = fin_chunks + extra
     print(f"  Analyzing {len(all_chunks)} chunks for financials...")
 
-    context = "\n\n---\n\n".join(all_chunks[:30])
+    # Limit chunks to control speed
+    context = "\n\n---\n\n".join(all_chunks[:20])
     prompt_template = load_prompt()
 
     prompt = f"""{prompt_template}
@@ -173,14 +175,17 @@ Return ONLY valid JSON, no markdown."""
 if __name__ == "__main__":
     from src.ingestion.pdf_loader import load_pdf
     from src.agents.supervisor import section_identifier_agent
+    from src.ingestion.embedder import get_pdf_hash
 
     result = load_pdf("data/sample_drhps/swiggy_drhp.pdf")
+    pdf_hash = get_pdf_hash("data/sample_drhps/swiggy_drhp.pdf")
 
     state = ResearchState(
         drhp_text=result["text"],
         pdf_path="data/sample_drhps/swiggy_drhp.pdf",
         file_name=result["file_name"],
         total_pages=result["total_pages"],
+        pdf_hash=pdf_hash,
         sections={},
         red_flags=[],
         risk_score=0,

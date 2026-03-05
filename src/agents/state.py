@@ -7,6 +7,7 @@ class ResearchState(TypedDict):
     pdf_path: str
     file_name: str
     total_pages: int
+    pdf_hash: str
 
     # Agent 1 output
     sections: Dict[str, List[str]]
