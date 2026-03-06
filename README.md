@@ -2,6 +2,11 @@
 
 > AI-powered Indian IPO analysis system using LangGraph multi-agent architecture. Upload any SEBI DRHP PDF and get a complete investor report with BUY/AVOID/WATCH verdict in under 2 minutes.
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Click%20Here-blue)](http://40.192.105.49:8501)
+[![GitHub](https://img.shields.io/badge/GitHub-Mani9kanta3-black)](https://github.com/Mani9kanta3/IPO-DRHP-Intelligence-Agent)
+
+🚀 **[Live Demo](http://40.192.105.49:8501)** | 📂 **[GitHub](https://github.com/Mani9kanta3/IPO-DRHP-Intelligence-Agent)**
+
 ---
 
 ## 🎯 What This Does
@@ -83,6 +88,9 @@ Streamlit Dashboard (report + charts)
 | Backend API | FastAPI + Uvicorn |
 | Frontend | Streamlit + Plotly |
 | Security | API Key Authentication |
+| Containerization | Docker + Docker Compose |
+| Cloud | AWS EC2 |
+| CI/CD | GitHub Actions |
 
 ---
 
@@ -94,6 +102,7 @@ Streamlit Dashboard (report + charts)
 | Analysis time (cached PDF) | ~100 seconds |
 | DRHP pages supported | 300–700 pages |
 | Agents running in parallel | 3 (Agents 2, 3, 4) |
+| Speed improvement | 4.2x (424s → 100s) |
 | Cost per analysis | ~₹0 (Gemini free tier) |
 
 ---
@@ -130,6 +139,8 @@ ipo-drhp-agent/
 │   └── config.yaml
 ├── data/
 │   └── sample_drhps/
+├── Dockerfile
+├── docker-compose.yml
 ├── requirements.txt
 └── .env
 ```
@@ -141,8 +152,8 @@ ipo-drhp-agent/
 ### 1. Clone and Setup
 
 ```bash
-git clone https://github.com/yourusername/ipo-drhp-agent.git
-cd ipo-drhp-agent
+git clone https://github.com/Mani9kanta3/IPO-DRHP-Intelligence-Agent.git
+cd IPO-DRHP-Intelligence-Agent
 python -m venv venv
 venv\Scripts\activate       # Windows
 source venv/bin/activate    # Mac/Linux
@@ -163,7 +174,15 @@ Get your keys:
 - **Gemini**: [aistudio.google.com](https://aistudio.google.com) → Get API Key (free)
 - **Tavily**: [tavily.com](https://tavily.com) → Sign up (1000 searches/month free)
 
-### 3. Run the Application
+### 3. Run with Docker
+
+```bash
+docker-compose up --build
+```
+
+Open browser: `http://localhost:8501`
+
+### 4. Run Locally (without Docker)
 
 Terminal 1 — Start API:
 ```bash
@@ -175,9 +194,7 @@ Terminal 2 — Start Dashboard:
 streamlit run src/frontend/app.py
 ```
 
-Open browser: `http://localhost:8501`
-
-### 4. Upload a DRHP
+### 5. Upload a DRHP
 
 Download any DRHP PDF from [SEBI website](https://www.sebi.gov.in) and upload it.
 
@@ -294,7 +311,6 @@ print(report["verdict"])  # BUY / AVOID / WATCH
 - [ ] Post-listing performance tracker (did BUY/AVOID verdict prove correct?)
 - [ ] Side-by-side comparison of two DRHPs
 - [ ] OCR support for scanned DRHP pages
-- [ ] Docker deployment
 - [ ] Historical IPO database
 
 ---
@@ -309,4 +325,4 @@ Built by **Manikanta Pudi**
 
 ---
 
-*Built with LangGraph, LangChain, Google Gemini, ChromaDB, FastAPI, and Streamlit*
+*Built with LangGraph, LangChain, Google Gemini, ChromaDB, FastAPI, Streamlit, Docker, and AWS EC2*
