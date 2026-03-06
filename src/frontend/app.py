@@ -2,7 +2,8 @@ import streamlit as st
 import requests
 import time
 
-API_URL = "http://127.0.0.1:8000"
+import os
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 API_KEY = "drhp-secret-key-2024"
 HEADERS = {"X-API-Key": API_KEY}
 
